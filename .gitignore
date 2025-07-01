@@ -1,0 +1,9 @@
+.env
+.vscode
+.DS_Store
+.ipynb_checkpoints
+.pytest_cache
+.coverage
+.coverage.*
+.coverage.*
+data/
