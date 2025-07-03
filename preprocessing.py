@@ -43,7 +43,7 @@ if 'GS' in stock_data:
     
     # Plot original and Fourier components
     plt.plot(gs_enhanced['date'], gs_enhanced['close'], label='Original Price', alpha=0.7)
-    for component in [3, 6, 9]:
+    for component in [3, 6, 9, 100]:
         plt.plot(gs_enhanced['date'], gs_enhanced[f'fourier_{component}'], 
                 label=f'Fourier {component} components', alpha=0.8)
     
