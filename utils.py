@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 
 load_dotenv()
 
+# TODO: rename data.pkl to raw_data.pkl
+
 # Fourier Transform Features (as specified in Plan.md)
 class FourierFeatures:
     @staticmethod
@@ -102,23 +104,20 @@ class DataProcessor:
         
     def combine_all_data(self, stock_data_dict):
         """
-        Combine all ticker data into master dataset
+        Combine all ticker data into master dataset (without features)
         """
         master_df = None
         
         for ticker, data in stock_data_dict.items():
             if data is not None and not data.empty:
-                # Add technical indicators
-                enhanced_data = TechnicalIndicators.add_all_indicators(data)
-                
                 # Add ticker prefix to columns (except date)
-                enhanced_data = enhanced_data.rename(columns=lambda x: f"{ticker}_{x}" if x != 'date' else x)
+                prefixed_data = data.rename(columns=lambda x: f"{ticker}_{x}" if x != 'date' else x)
                 
                 if master_df is None:
-                    master_df = enhanced_data
+                    master_df = prefixed_data
                 else:
                     # Merge on date
-                    master_df = pd.merge(master_df, enhanced_data, on='date', how='outer')
+                    master_df = pd.merge(master_df, prefixed_data, on='date', how='outer')
         
         return master_df
     
@@ -201,53 +200,120 @@ class TechnicalIndicators:
         
         return df
     
-def load_data(all_tickers) -> tuple[pd.DataFrame, dict]:
-    # check if data/master_data.pkl exists
-    if os.path.exists('data/data.pkl'):
-        print("Loading datasets from file...")
-        with open('data/data.pkl', 'rb') as f:
-            data_package = pickle.load(f)
-        master_data_clean = data_package['master_data']
-        stock_data = data_package['stock_data']
-        print(f"Loaded master dataset with shape: {master_data_clean.shape}")
-        print(f"Loaded stock data for tickers: {list(stock_data.keys())}")
+def load_raw_data(all_tickers) -> dict:
+    """Step 1: Download data into stock_data or load from data/raw_data.pkl"""
+    if os.path.exists('data/raw_data.pkl'):
+        print("Loading raw stock data from file...")
+        with open('data/raw_data.pkl', 'rb') as f:
+            stock_data = pickle.load(f)
+        print(f"Loaded raw stock data for tickers: {list(stock_data.keys())}")
     else:
-        print("Creating master dataset...")
+        print("Fetching raw stock data from API...")
         POLYGON_API_KEY = os.getenv('POLYGON_API_KEY')
         pipeline = PolygonDataPipeline(POLYGON_API_KEY)
         
-        # Initialize processor
-        processor = DataProcessor()
-        
-        # Fetch the data
         start_date = "2010-01-01"
         end_date = "2024-12-31"
         
-        # Get all stock data
         stock_data = pipeline.get_multiple_stocks(all_tickers, start_date, end_date)
         
         if stock_data:
-            print("Creating master dataset...")
-            master_data = processor.combine_all_data(stock_data)
+            # Save raw data
+            os.makedirs('data', exist_ok=True)
+            with open('data/raw_data.pkl', 'wb') as f:
+                pickle.dump(stock_data, f)
+            print(f"Raw stock data saved to data/raw_data.pkl")
+        else:
+            print("Failed to fetch stock data")
             
-            if master_data is not None:
-                print(f"Master dataset shape: {master_data.shape}")
-                print(f"Date range: {master_data['date'].min()} to {master_data['date'].max()}")
-                
-                # Clean the data
-                master_data_clean = processor.clean_data(master_data)
-                
-                # Save both datasets in a single file
-                data_package = {
-                    'master_data': master_data_clean,
-                    'stock_data': stock_data
-                }
-                processor.save_data(data_package, "data/data.pkl")
-                
-                print("\nColumn overview:")
-                print(f"Total columns: {len(master_data_clean.columns)}")
-                print(f"Sample columns: {list(master_data_clean.columns[:10])}")
+    return stock_data
+
+def clean_raw_data(stock_data) -> dict:
+    """Step 2: Clean the raw data"""
+    print("Cleaning raw stock data...")
+    cleaned_data = {}
+    processor = DataProcessor()
+    
+    for ticker, data in stock_data.items():
+        if data is not None and not data.empty:
+            # Basic cleaning without technical indicators
+            cleaned = data.copy()
+            cleaned = cleaned.sort_values('date').reset_index(drop=True)
+            cleaned = cleaned.dropna()
+            cleaned_data[ticker] = cleaned
+            print(f"Cleaned {ticker}: {cleaned.shape}")
+    
+    return cleaned_data
+
+def add_features(cleaned_data) -> pd.DataFrame:
+    """Step 3: Add technical indicators and Fourier features to create master dataset"""
+    print("Adding technical indicators and features...")
+    master_df = None
+    
+    for ticker, data in cleaned_data.items():
+        if data is not None and not data.empty:
+            # Add technical indicators
+            enhanced_data = TechnicalIndicators.add_all_indicators(data)
+            
+            # Add Fourier features
+            enhanced_data = FourierFeatures.add_fourier_components(enhanced_data)
+            
+            # Add ticker prefix to columns (except date)
+            enhanced_data = enhanced_data.rename(columns=lambda x: f"{ticker}_{x}" if x != 'date' else x)
+            
+            if master_df is None:
+                master_df = enhanced_data
             else:
-                print("Failed to create master dataset")
-        
-    return master_data_clean, stock_data
+                # Merge on date
+                master_df = pd.merge(master_df, enhanced_data, on='date', how='outer')
+    
+    # Final cleaning
+    processor = DataProcessor()
+    master_df = processor.clean_data(master_df)
+    
+    return master_df
+
+def save_final_dataset(dataset, stock_data):
+    """Step 4: Save final dataset to data/dataset.pkl"""
+    print("Saving final dataset...")
+    os.makedirs('data', exist_ok=True)
+    
+    final_package = {
+        'dataset': dataset,
+        'stock_data': stock_data
+    }
+    
+    with open('data/dataset.pkl', 'wb') as f:
+        pickle.dump(final_package, f)
+    print(f"Final dataset saved to data/dataset.pkl")
+    print(f"Dataset shape: {dataset.shape}")
+
+def load_or_create_dataset(all_tickers) -> tuple[pd.DataFrame, dict]:
+    """Main workflow: Load from dataset.pkl or create through 4-step process"""
+    # Check if final dataset exists
+    if os.path.exists('data/dataset.pkl'):
+        print("Loading final dataset from file...")
+        with open('data/dataset.pkl', 'rb') as f:
+            data_package = pickle.load(f)
+        dataset = data_package['dataset']
+        stock_data = data_package['stock_data']
+        print(f"Loaded dataset with shape: {dataset.shape}")
+        print(f"Available tickers: {list(stock_data.keys())}")
+        return dataset, stock_data
+    
+    # If not, follow 4-step workflow
+    print("Creating dataset through 4-step workflow...")
+    
+    # Step 1: Load raw data
+    stock_data = load_raw_data(all_tickers)
+    
+    # Step 2: Clean data
+    cleaned_data = clean_raw_data(stock_data)
+    
+    # Step 3: Add features
+    dataset = add_features(cleaned_data)
+    
+    # Step 4: Save final dataset
+    save_final_dataset(dataset, stock_data)
+    
+    return dataset, stock_data
