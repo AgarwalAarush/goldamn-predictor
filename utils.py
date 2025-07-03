@@ -1,9 +1,13 @@
 import numpy as np
 import pandas as pd
 import requests
+import os
 import time
 import pickle
+from dotenv import load_dotenv
 from datetime import datetime, timedelta
+
+load_dotenv()
 
 # Fourier Transform Features (as specified in Plan.md)
 class FourierFeatures:
@@ -196,3 +200,54 @@ class TechnicalIndicators:
         df['volatility_20'] = df['log_returns'].rolling(window=20).std() * np.sqrt(252)
         
         return df
+    
+def load_data(all_tickers) -> tuple[pd.DataFrame, dict]:
+    # check if data/master_data.pkl exists
+    if os.path.exists('data/master_data.pkl'):
+        print("Loading datasets from file...")
+        with open('data/master_data.pkl', 'rb') as f:
+            data_package = pickle.load(f)
+        master_data_clean = data_package['master_data']
+        stock_data = data_package['stock_data']
+        print(f"Loaded master dataset with shape: {master_data_clean.shape}")
+        print(f"Loaded stock data for tickers: {list(stock_data.keys())}")
+    else:
+        print("Creating master dataset...")
+        POLYGON_API_KEY = os.getenv('POLYGON_API_KEY')
+        pipeline = PolygonDataPipeline(POLYGON_API_KEY)
+        
+        # Initialize processor
+        processor = DataProcessor()
+        
+        # Fetch the data
+        start_date = "2010-01-01"
+        end_date = "2024-12-31"
+        
+        # Get all stock data
+        stock_data = pipeline.get_multiple_stocks(all_tickers, start_date, end_date)
+        
+        if stock_data:
+            print("Creating master dataset...")
+            master_data = processor.combine_all_data(stock_data)
+            
+            if master_data is not None:
+                print(f"Master dataset shape: {master_data.shape}")
+                print(f"Date range: {master_data['date'].min()} to {master_data['date'].max()}")
+                
+                # Clean the data
+                master_data_clean = processor.clean_data(master_data)
+                
+                # Save both datasets in a single file
+                data_package = {
+                    'master_data': master_data_clean,
+                    'stock_data': stock_data
+                }
+                processor.save_data(data_package, "data/master_data.pkl")
+                
+                print("\nColumn overview:")
+                print(f"Total columns: {len(master_data_clean.columns)}")
+                print(f"Sample columns: {list(master_data_clean.columns[:10])}")
+            else:
+                print("Failed to create master dataset")
+        
+    return master_data_clean, stock_data

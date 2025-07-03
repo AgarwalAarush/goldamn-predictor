@@ -5,16 +5,10 @@ import time
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-from utils import FourierFeatures, TechnicalIndicators, DataProcessor, PolygonDataPipeline
+from utils import load_data, FourierFeatures, TechnicalIndicators
 import matplotlib.pyplot as plt
 import pickle
 
-load_dotenv()
-
-POLYGON_API_KEY = os.getenv('POLYGON_API_KEY')
-    
-# Initialize pipeline
-pipeline = PolygonDataPipeline(POLYGON_API_KEY)
 
 # Define tickers from Plan.md
 core_tickers = ['GS']  # Goldman Sachs
@@ -28,35 +22,8 @@ all_tickers = core_tickers + correlated_tickers + market_indices + volatility_ti
 print(f"Fetching data for tickers: {all_tickers}")
 print(f"Date range: 2010-01-01 to 2024-12-31")
 
-# Initialize processor
-processor = DataProcessor()
 
-# Fetch the data
-start_date = "2010-01-01"
-end_date = "2024-12-31"
-
-# Get all stock data
-stock_data = pipeline.get_multiple_stocks(all_tickers, start_date, end_date)
-
-if stock_data:
-    print("Creating master dataset...")
-    master_data = processor.combine_all_data(stock_data)
-    
-    if master_data is not None:
-        print(f"Master dataset shape: {master_data.shape}")
-        print(f"Date range: {master_data['date'].min()} to {master_data['date'].max()}")
-        
-        # Clean the data
-        master_data_clean = processor.clean_data(master_data)
-        
-        # Save processed data
-        processor.save_data(master_data_clean, "data/master_data.pkl")
-        
-        print("\nColumn overview:")
-        print(f"Total columns: {len(master_data_clean.columns)}")
-        print(f"Sample columns: {list(master_data_clean.columns[:10])}")
-    else:
-        print("Failed to create master dataset")
+master_data_clean, stock_data = load_data(all_tickers)
 
 # Apply Fourier features and technical indicators to GS data
 if 'GS' in stock_data:
