@@ -203,9 +203,9 @@ class TechnicalIndicators:
     
 def load_data(all_tickers) -> tuple[pd.DataFrame, dict]:
     # check if data/master_data.pkl exists
-    if os.path.exists('data/master_data.pkl'):
+    if os.path.exists('data/data.pkl'):
         print("Loading datasets from file...")
-        with open('data/master_data.pkl', 'rb') as f:
+        with open('data/data.pkl', 'rb') as f:
             data_package = pickle.load(f)
         master_data_clean = data_package['master_data']
         stock_data = data_package['stock_data']
@@ -242,7 +242,7 @@ def load_data(all_tickers) -> tuple[pd.DataFrame, dict]:
                     'master_data': master_data_clean,
                     'stock_data': stock_data
                 }
-                processor.save_data(data_package, "data/master_data.pkl")
+                processor.save_data(data_package, "data/data.pkl")
                 
                 print("\nColumn overview:")
                 print(f"Total columns: {len(master_data_clean.columns)}")
