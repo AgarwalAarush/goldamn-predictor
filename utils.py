@@ -9,8 +9,6 @@ from datetime import datetime, timedelta
 
 load_dotenv()
 
-# TODO: rename data.pkl to raw_data.pkl
-
 # Fourier Transform Features (as specified in Plan.md)
 class FourierFeatures:
     @staticmethod
@@ -98,54 +96,6 @@ class PolygonDataPipeline:
             time.sleep(0.1)  # Rate limiting
         return all_data
 
-class DataProcessor:
-    def __init__(self):
-        self.master_data = None
-        
-    def combine_all_data(self, stock_data_dict):
-        """
-        Combine all ticker data into master dataset (without features)
-        """
-        master_df = None
-        
-        for ticker, data in stock_data_dict.items():
-            if data is not None and not data.empty:
-                # Add ticker prefix to columns (except date)
-                prefixed_data = data.rename(columns=lambda x: f"{ticker}_{x}" if x != 'date' else x)
-                
-                if master_df is None:
-                    master_df = prefixed_data
-                else:
-                    # Merge on date
-                    master_df = pd.merge(master_df, prefixed_data, on='date', how='outer')
-        
-        return master_df
-    
-    def clean_data(self, df):
-        """
-        Clean and validate the dataset
-        """
-        print(f"Original shape: {df.shape}")
-        
-        # Sort by date
-        df = df.sort_values('date').reset_index(drop=True)
-        
-        # Forward fill missing values for technical indicators
-        df = df.fillna(method='ffill')
-        
-        # Drop rows with too many missing values
-        df = df.dropna(thresh=len(df.columns) * 0.7)  # Keep rows with at least 70% data
-        
-        print(f"Cleaned shape: {df.shape}")
-        return df
-    
-    def save_data(self, df, filename='processed_data.pkl'):
-        """
-        Save processed data
-        """
-        with open(filename, 'wb') as f:
-            pickle.dump(df, f)
-        print(f"Data saved to {filename}")
 
 # Technical Indicators Calculator (Enhanced)
 class TechnicalIndicators:
@@ -232,14 +182,20 @@ def clean_raw_data(stock_data) -> dict:
     """Step 2: Clean the raw data"""
     print("Cleaning raw stock data...")
     cleaned_data = {}
-    processor = DataProcessor()
     
     for ticker, data in stock_data.items():
         if data is not None and not data.empty:
-            # Basic cleaning without technical indicators
-            cleaned = data.copy()
-            cleaned = cleaned.sort_values('date').reset_index(drop=True)
-            cleaned = cleaned.dropna()
+            print(f"Original {ticker} shape: {data.shape}")
+            
+            # Sort by date
+            cleaned = data.sort_values('date').reset_index(drop=True)
+            
+            # Remove duplicates
+            cleaned = cleaned.drop_duplicates(subset=['date'])
+            
+            # Remove rows with missing essential data
+            cleaned = cleaned.dropna(subset=['open', 'high', 'low', 'close', 'volume'])
+            
             cleaned_data[ticker] = cleaned
             print(f"Cleaned {ticker}: {cleaned.shape}")
     
@@ -267,9 +223,12 @@ def add_features(cleaned_data) -> pd.DataFrame:
                 # Merge on date
                 master_df = pd.merge(master_df, enhanced_data, on='date', how='outer')
     
-    # Final cleaning
-    processor = DataProcessor()
-    master_df = processor.clean_data(master_df)
+    # Final cleaning of master dataset
+    print(f"Original master dataset shape: {master_df.shape}")
+    master_df = master_df.sort_values('date').reset_index(drop=True)
+    master_df = master_df.fillna(method='ffill')
+    master_df = master_df.dropna(thresh=len(master_df.columns) * 0.7)
+    print(f"Final master dataset shape: {master_df.shape}")
     
     return master_df
 
