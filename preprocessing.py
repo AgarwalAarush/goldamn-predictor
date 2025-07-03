@@ -52,4 +52,11 @@ if 'GS' in stock_data:
     plt.ylabel('Price (USD)')
     plt.legend()
     plt.grid(True, alpha=0.3)
+
+    # create images folder if it doesn't exist
+    if not os.path.exists('images'):
+        os.makedirs('images')
+
+    plt.savefig('images/gs_fourier.png')
+
     plt.show()
